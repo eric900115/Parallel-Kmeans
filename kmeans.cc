@@ -11,7 +11,7 @@ unsigned char* image_src, *image_result;
 int read_png(const char* filename, unsigned char** image, unsigned* height, 
              unsigned* width, unsigned* channels) {
 
-    unsigned char sig[8];
+    unsigned char sig[8];;
     FILE* infile;
     infile = fopen(filename, "rb");
 
