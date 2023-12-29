@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cstdlib>
+#include <ctime>
 #include <cassert>
 #include <zlib.h>
 #include <png.h>
@@ -90,9 +91,11 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
 
     // get random center
     for(int i = 0; i < num_cluster; i++) {
-        centroid[channels * i + 0] = image_src[channels * (i * 20 + 15 * i * width) + 0];
-        centroid[channels * i + 1] = image_src[channels * (i * 20 + 15 * i * width) + 1];
-        centroid[channels * i + 2] = image_src[channels * (i * 20 + 15 * i * width) + 2];
+        int idx_i = rand() % width;
+        int idx_j = rand() % height;
+        centroid[channels * i + 0] = image_src[channels * (idx_i + idx_j * width) + 0];
+        centroid[channels * i + 1] = image_src[channels * (idx_i + idx_j * width) + 1];
+        centroid[channels * i + 2] = image_src[channels * (idx_i + idx_j * width) + 2];
     }
 
     while (1)
@@ -164,7 +167,7 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
         }
 
         // if the sum < threshold, stop the iteraton
-        if(sum_val < num_cluster * 6.88) {
+        if(sum_val < num_cluster * 4.1) {
             break;
         }
     }
@@ -196,6 +199,8 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
 }
 
 int main(int argc, char** argv) {
+
+    srand(time(0));
 
     assert(argc == 3);
     unsigned height, width, channels;
