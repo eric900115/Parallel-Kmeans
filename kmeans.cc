@@ -116,7 +116,7 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
     int dist, min_dist, idx, sum_val;
 
     // get random center
-    //todo
+    //todo: pragma omp atomic read /write
     //#pragma omp parallel for num_threads(threadNum) -- data race: rand()
     for(int i = 0; i < num_cluster; i++) {
         int idx_i = rand() % width;

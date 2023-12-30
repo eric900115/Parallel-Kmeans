@@ -26,10 +26,10 @@ kmeans: kmeans.cc
 	$(CXX) $(LDFLAGS) $(CXXFLAGS) -o $@ $?
 
 kmeans_omp: kmeans_omp.cc
-	$(CXX) $(CXXFLAGS) -o $@ $?
+	$(CXX) $(LDFLAGS) $(CXXFLAGS) -o $@ $?
 
 kmeans_hybrid: kmeans_hybrid.cc
-	$(CXX) $(CXXFLAGS) -o $@ $?
+	$(CXX) $(LDFLAGS) $(CXXFLAGS) -o $@ $?
 
 kmeans_cuda: kmeans_cuda.cu
 	$(NVCC) $(NVFLAGS) $(CFLAGS) $(LDFLAGS) -Xcompiler="$(XCFLAGS)" -o $@ $?
