@@ -181,6 +181,7 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
         
             for(int k = 0; k < num_cluster; k++) {
                 // calculate l2 norm
+                dist = 0;
                 dist += (val[0] - centroid[channels * k + 0]) * (val[0] - centroid[channels * k + 0]);
                 dist += (val[1] - centroid[channels * k + 1]) * (val[1] - centroid[channels * k + 1]);
                 dist += (val[2] - centroid[channels * k + 2]) * (val[2] - centroid[channels * k + 2]);
@@ -208,7 +209,7 @@ int main(int argc, char** argv) {
     read_png(argv[1], &image_src, &height, &width, &channels);
     image_result = (unsigned char*) malloc(height * width * channels * sizeof(unsigned char));
 
-    kmeans(image_src, image_result, height, width, channels, 5);
+    kmeans(image_src, image_result, height, width, channels, 10);
 
     write_png(argv[2], image_result, height, width, channels);
 
