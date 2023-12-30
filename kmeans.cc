@@ -5,8 +5,29 @@
 #include <zlib.h>
 #include <png.h>
 #include <math.h>
+#include <time.h>
+
+#include <omp.h>
+//#include <mpi.h>
+#define ull unsigned long long
 
 unsigned char* image_src, *image_result;
+
+double cal_time(struct timespec start, struct timespec end)
+{
+	struct timespec temp;
+	if ((end.tv_nsec - start.tv_nsec) < 0)
+	{
+		temp.tv_sec = end.tv_sec - start.tv_sec - 1;
+		temp.tv_nsec = 1000000000 + end.tv_nsec - start.tv_nsec;
+	}
+	else
+	{
+		temp.tv_sec = end.tv_sec - start.tv_sec;
+		temp.tv_nsec = end.tv_nsec - start.tv_nsec;
+	}
+	return temp.tv_sec + (double)temp.tv_nsec / 1000000000.0;
+}
 
 int read_png(const char* filename, unsigned char** image, unsigned* height, 
              unsigned* width, unsigned* channels) {
@@ -81,15 +102,22 @@ void write_png(const char* filename, png_bytep image, const unsigned height, con
 
 void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned height, unsigned width, unsigned channels, unsigned num_cluster) {
 
+    cpu_set_t cpuset;
+    sched_getaffinity(0, sizeof(cpuset), &cpuset);
+    ull threadNum = CPU_COUNT(&cpuset);
+    printf("threadNum: %d\n", threadNum);
+
     int *pt_cluster = (int*) malloc(height * width * sizeof(int));
     char *centroid = (char*) malloc(channels * num_cluster * sizeof(char));
     char *new_centroid = (char*) malloc(channels * num_cluster * sizeof(char));
     int *sum_dist = (int*) malloc(channels * num_cluster * sizeof(int));
     int *num_pt_cluster = (int*) malloc(num_cluster * sizeof(int));
-    char val[3];
+    // char val[3];
     int dist, min_dist, idx, sum_val;
 
     // get random center
+    //todo
+    //#pragma omp parallel for num_threads(threadNum) -- data race: rand()
     for(int i = 0; i < num_cluster; i++) {
         int idx_i = rand() % width;
         int idx_j = rand() % height;
@@ -98,16 +126,20 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
         centroid[channels * i + 2] = image_src[channels * (idx_i + idx_j * width) + 2];
     }
 
+
     while (1)
     {
+        #pragma omp parallel for collapse(2)
         for(int i = 0; i < height; i++) {
             for(int j = 0; j < width; j++) {
-                
+                char val[3];
                 val[0] = image_src[channels * (j + i * width) + 0];
                 val[1] = image_src[channels * (j + i * width) + 1];
                 val[2] = image_src[channels * (j + i * width) + 2];
-                min_dist = 1000000;
-                
+                int min_dist = 1000000;
+                int dist, idx;
+                //todo
+                //#pragma omp parallel for -- data race: idx, min_dist
                 for(int k = 0; k < num_cluster; k++) {
                     // calculate l2 norm
                     dist = 0;
@@ -126,6 +158,7 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
         }
 
         // clear the value
+        #pragma omp parallel for
         for(int i = 0; i < num_cluster; i++) {
             num_pt_cluster[i] = 0;
             sum_dist[0 + i * channels] = 0;
@@ -133,6 +166,8 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
             sum_dist[2 + i * channels] = 0;
         }
 
+        // todo
+        //#pragma omp parallel for collapse(2) -- data race: idx 
         for(int i = 0; i < height; i++) {
             for(int j = 0; j < width; j++) {
                 idx = pt_cluster[j + i * width]; // get cluster id
@@ -143,6 +178,7 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
             }
         }
 
+        #pragma omp parallel for
         for(int i = 0; i < num_cluster; i++) {
             if(num_pt_cluster[i] != 0) {
                 new_centroid[channels * i + 0] = sum_dist[i * channels + 0] / num_pt_cluster[i];
@@ -154,16 +190,21 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
         // calculate the sum of difference between old center and new center
         // Also, save the centroid value
         sum_val = 0;
+        //todo
+        #pragma omp parallel for reduction(+:sum_val)
         for(int i = 0; i < num_cluster; i++) {
-            dist = 0;
+            int dist = 0;
             dist += (new_centroid[channels * i + 0] - centroid[channels * i + 0]) * (new_centroid[channels * i + 0] - centroid[channels * i + 0]);
             dist += (new_centroid[channels * i + 1] - centroid[channels * i + 1]) * (new_centroid[channels * i + 1] - centroid[channels * i + 1]);
             dist += (new_centroid[channels * i + 2] - centroid[channels * i + 2]) * (new_centroid[channels * i + 2] - centroid[channels * i + 2]);
-            sum_val += sqrt(dist);
-            
-            centroid[channels * i + 0] = new_centroid[channels * i + 0];
-            centroid[channels * i + 1] = new_centroid[channels * i + 1];
-            centroid[channels * i + 2] = new_centroid[channels * i + 2];
+            //#pragma omp critical
+            //{    
+                sum_val += sqrt(dist);
+                
+                centroid[channels * i + 0] = new_centroid[channels * i + 0];
+                centroid[channels * i + 1] = new_centroid[channels * i + 1];
+                centroid[channels * i + 2] = new_centroid[channels * i + 2];
+            //}
         }
 
         // if the sum < threshold, stop the iteraton
@@ -171,16 +212,19 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
             break;
         }
     }
-
+    //todo
+    #pragma omp parallel for collapse(2)
     for(int i = 0; i < height; i++) {
         for(int j = 0; j < width; j++) {
+            char val[3];
             val[0] = image_src[channels * (j + i * width) + 0];
             val[1] = image_src[channels * (j + i * width) + 1];
             val[2] = image_src[channels * (j + i * width) + 2];
-            min_dist = 1000000;
-        
+            int min_dist = 1000000;
+            int dist, idx;
             for(int k = 0; k < num_cluster; k++) {
                 // calculate l2 norm
+                dist = 0;
                 dist += (val[0] - centroid[channels * k + 0]) * (val[0] - centroid[channels * k + 0]);
                 dist += (val[1] - centroid[channels * k + 1]) * (val[1] - centroid[channels * k + 1]);
                 dist += (val[2] - centroid[channels * k + 2]) * (val[2] - centroid[channels * k + 2]);
@@ -199,6 +243,8 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
 }
 
 int main(int argc, char** argv) {
+    double total_time;
+	timespec total_time1, total_time2;
 
     srand(time(0));
 
@@ -208,7 +254,13 @@ int main(int argc, char** argv) {
     read_png(argv[1], &image_src, &height, &width, &channels);
     image_result = (unsigned char*) malloc(height * width * channels * sizeof(unsigned char));
 
-    kmeans(image_src, image_result, height, width, channels, 5);
+    //clock_gettime(CLOCK_MONOTONIC, &total_time1);
+    kmeans(image_src, image_result, height, width, channels, 1000);
+    //printf("%u, %u ", height, width);
+    //clock_gettime(CLOCK_MONOTONIC, &total_time2);
+	
+    //total_time = cal_time(total_time1, total_time2);
+    //printf(" total_time:  %.5f\n", total_time);
 
     write_png(argv[2], image_result, height, width, channels);
 
