@@ -12,8 +12,10 @@
 #define ull unsigned long long
 #define CENTROID_TAG 0
 #define UPDATE_CENTROID_TAG 1
+#define UPDATE_IMAGE_TAG 2
+
 unsigned char* image_src, *image_result;
-// int rank, size; 
+int rank, size; 
 
 
 double cal_time(struct timespec start, struct timespec end)
@@ -103,14 +105,13 @@ void write_png(const char* filename, png_bytep image, const unsigned height, con
     fclose(fp);
 }
 
-void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned height, unsigned width, unsigned channels, unsigned num_cluster, int size, int rank) {
+void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned height, unsigned width, unsigned channels, unsigned num_cluster) {
 
-    printf("%d\n", rank);
+    printf("rank: %d\n", rank);
 
     cpu_set_t cpuset;
     sched_getaffinity(0, sizeof(cpuset), &cpuset);
     ull threadNum = CPU_COUNT(&cpuset);
-    printf("threadNum: %d\n", threadNum);
 
     int *pt_cluster = (int*) malloc(height * width * sizeof(int));
     char *centroid = (char*) malloc(channels * num_cluster * sizeof(char));
@@ -118,6 +119,8 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
     char *tmp_centroid = (char*) malloc(channels * num_cluster * sizeof(char));
     int *sum_dist = (int*) malloc(channels * num_cluster * sizeof(int));
     int *num_pt_cluster = (int*) malloc(num_cluster * sizeof(int));
+    unsigned char* tmp_image_result = (unsigned char*) malloc(height * width * channels * sizeof(unsigned char));
+    
     // char val[3];
     int dist, min_dist, idx, sum_val;
     MPI_Status status;
@@ -133,15 +136,9 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
             centroid[channels * i + 1] = image_src[channels * (idx_i + idx_j * width) + 1];
             centroid[channels * i + 2] = image_src[channels * (idx_i + idx_j * width) + 2];
         }
-        for (int dest = 1; dest < size; dest++) {
-            MPI_Send(centroid, channels * num_cluster, MPI_CHAR, dest, CENTROID_TAG, MPI_COMM_WORLD);
-        }
     }
-    else{
-        MPI_Recv(centroid, channels * num_cluster, MPI_CHAR, 0, CENTROID_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        printf("receive centroid broadcast by rank: %d.\n", rank);
-    }
-    fflush(stdout);
+    
+    MPI_Bcast(centroid, channels * num_cluster, MPI_CHAR, 0, MPI_COMM_WORLD);
 
     // process parse ROWS_PER_ROUND rows per communication.
     // int ROWS_PER_ROUND = 20;
@@ -151,7 +148,7 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
     while (1)
     {
                 
-        #pragma omp parallel for collapse(2)
+        #pragma omp parallel for collapse(2) num_threads(threadNum)
         for(int i = rank; i < height; i+=size) {
             for(int j = 0; j < width; j++) {
                 char val[3];
@@ -182,15 +179,13 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
         
 
         // clear the value
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(threadNum)
         for(int i = 0; i < num_cluster; i++) {
             num_pt_cluster[i] = 0;
             sum_dist[0 + i * channels] = 0;
             sum_dist[1 + i * channels] = 0;
             sum_dist[2 + i * channels] = 0;
         }
-
-        printf("rank: %d is here.\n", rank);
 
         // todo
         //#pragma omp parallel for collapse(2) -- data race: idx 
@@ -209,12 +204,12 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
         MPI_Allreduce(MPI_IN_PLACE, sum_dist, channels * num_cluster, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
         MPI_Allreduce(MPI_IN_PLACE, num_pt_cluster, num_cluster, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 
-        MPI_Barrier(MPI_COMM_WORLD);
+        //MPI_Barrier(MPI_COMM_WORLD);
 
 
         //todo: MPI 要merge [num_pt_cluster] and [sum_dist]
                    
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(threadNum)
         for(int i = rank; i < num_cluster; i+=size) {
             if(num_pt_cluster[i] != 0) {
                 new_centroid[channels * i + 0] = sum_dist[i * channels + 0] / num_pt_cluster[i];
@@ -229,7 +224,7 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
         // Also, save the centroid value
         sum_val = 0;
         //todo
-        #pragma omp parallel for reduction(+:sum_val)
+        #pragma omp parallel for num_threads(threadNum) reduction(+:sum_val)
         for(int i = rank; i < num_cluster; i+=size) {
             int dist = 0;
             dist += (new_centroid[channels * i + 0] - centroid[channels * i + 0]) * (new_centroid[channels * i + 0] - centroid[channels * i + 0]);
@@ -240,10 +235,8 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
             centroid[channels * i + 0] = new_centroid[channels * i + 0];
             centroid[channels * i + 1] = new_centroid[channels * i + 1];
             centroid[channels * i + 2] = new_centroid[channels * i + 2];
-            //todo centroid distribute to other processes ?? 
-            
         }
-        printf("stuck here (1). rank: %d \n", rank);
+        
         for (size_t process = 0; process < size; process++)
         {
             if(process != rank){
@@ -257,7 +250,6 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
             MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
             int MPI_SOURCE = status.MPI_SOURCE;
             int MPI_TAG = status.MPI_TAG;
-            printf("stuck here (2). rank: %d, MPI_SOURCE: %d \n", rank, MPI_SOURCE);
             MPI_Recv( tmp_centroid ,channels* num_cluster, MPI_CHAR, MPI_SOURCE, UPDATE_CENTROID_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             for (size_t i = MPI_SOURCE; i < num_cluster; i+=size)
             {
@@ -265,22 +257,18 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
                 centroid[channels * i + 1] = tmp_centroid[channels * i + 1];
                 centroid[channels * i + 2] = tmp_centroid[channels * i + 2];
             }
-            printf("stuck here (2). rank: %d, MPI_TAG: %d \n", rank, MPI_TAG);
         }
-        printf("stuck here (3). rank: %d \n", rank);
         
         MPI_Allreduce(MPI_IN_PLACE, &sum_val, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-        MPI_Barrier(MPI_COMM_WORLD);
-        printf("stuck here (4). rank: %d \n", rank);
+        // MPI_Barrier(MPI_COMM_WORLD);
         // if the sum < threshold, stop the iteraton
-       
         if(sum_val < num_cluster * 4.1) {
             break;
         }
     }
-    //todo
-    #pragma omp parallel for collapse(2)
-    for(int i = 0; i < height; i++) {
+    // write image 
+    #pragma omp parallel for collapse(2) num_threads(threadNum)
+    for(int i = rank; i < height; i+=size) {
         for(int j = 0; j < width; j++) {
             char val[3];
             val[0] = image_src[channels * (j + i * width) + 0];
@@ -306,6 +294,28 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
             image_result[channels * (j + i * width) + 2] = centroid[channels * idx + 2];
         }
     }
+    // write image 
+    if(rank != 0){
+        MPI_Send(image_result, channels*height*width, MPI_UNSIGNED_CHAR, 0, UPDATE_IMAGE_TAG, MPI_COMM_WORLD);
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+    if(rank == 0){
+        for (size_t count = 0; count < size-1; count++)
+        {
+            MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+            int MPI_SOURCE = status.MPI_SOURCE;
+            int MPI_TAG = status.MPI_TAG;
+            MPI_Recv(tmp_image_result ,channels*height*width, MPI_UNSIGNED_CHAR, MPI_SOURCE, UPDATE_IMAGE_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            for (size_t i = MPI_SOURCE; i < height; i+=size)
+            {
+                for(int j = 0; j < width; j++) {
+                    image_result[channels * (j + i * width) + 0] = tmp_image_result[channels * (j + i * width) + 0];
+                    image_result[channels * (j + i * width) + 1] = tmp_image_result[channels * (j + i * width) + 1];
+                    image_result[channels * (j + i * width) + 2] = tmp_image_result[channels * (j + i * width) + 2];
+                }
+            }
+        }
+    }
 }
 
 
@@ -315,7 +325,7 @@ int main(int argc, char** argv) {
 	timespec total_time1, total_time2;
 
     srand(time(0));
-    int rank, size;
+    
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
@@ -326,10 +336,9 @@ int main(int argc, char** argv) {
     image_src = NULL;
     read_png(argv[1], &image_src, &height, &width, &channels);
     image_result = (unsigned char*) malloc(height * width * channels * sizeof(unsigned char));
-    printf("after read pic.\n");
-
+   
     //clock_gettime(CLOCK_MONOTONIC, &total_time1);
-    kmeans(image_src, image_result, height, width, channels, 3, size, rank);
+    kmeans(image_src, image_result, height, width, channels, 1000);
     //printf("%u, %u ", height, width);
     //clock_gettime(CLOCK_MONOTONIC, &total_time2);
 	
