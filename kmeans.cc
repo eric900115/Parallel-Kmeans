@@ -82,11 +82,11 @@ void write_png(const char* filename, png_bytep image, const unsigned height, con
 void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned height, unsigned width, unsigned channels, unsigned num_cluster) {
 
     int *pt_cluster = (int*) malloc(height * width * sizeof(int));
-    char *centroid = (char*) malloc(channels * num_cluster * sizeof(char));
-    char *new_centroid = (char*) malloc(channels * num_cluster * sizeof(char));
+    unsigned char *centroid = (unsigned char*) malloc(channels * num_cluster * sizeof(unsigned char));
+    unsigned char *new_centroid = (unsigned char*) malloc(channels * num_cluster * sizeof(unsigned char));
     int *sum_dist = (int*) malloc(channels * num_cluster * sizeof(int));
     int *num_pt_cluster = (int*) malloc(num_cluster * sizeof(int));
-    char val[3];
+    unsigned char val[3];
     int dist, min_dist, idx, sum_val;
 
     // get random center
