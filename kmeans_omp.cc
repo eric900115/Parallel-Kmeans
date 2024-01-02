@@ -108,11 +108,15 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
     printf("threadNum: %d\n", threadNum);
 
     int *pt_cluster = (int*) malloc(height * width * sizeof(int));
-    char *centroid = (char*) malloc(channels * num_cluster * sizeof(char));
-    char *new_centroid = (char*) malloc(channels * num_cluster * sizeof(char));
+    // char *centroid = (char*) malloc(channels * num_cluster * sizeof(char));
+    // char *new_centroid = (char*) malloc(channels * num_cluster * sizeof(char));
+
+    unsigned char *centroid = (unsigned char*) malloc(channels * num_cluster * sizeof(unsigned char));
+    unsigned char *new_centroid = (unsigned char*) malloc(channels * num_cluster * sizeof(unsigned char));
+
     int *sum_dist = (int*) malloc(channels * num_cluster * sizeof(int));
     int *num_pt_cluster = (int*) malloc(num_cluster * sizeof(int));
-    // char val[3];
+    // unsigned char val[3];
     int dist, min_dist, idx, sum_val;
 
     // get random center
@@ -134,7 +138,7 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
             for(int j = 0; j < width; j++) {
                 //printf("%d %d\n", i, j);
                 //fflush(stdout);
-                char val[3];
+                unsigned char val[3];
                 val[0] = image_src[channels * (j + i * width) + 0];
                 val[1] = image_src[channels * (j + i * width) + 1];
                 val[2] = image_src[channels * (j + i * width) + 2];
@@ -223,7 +227,7 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
     #pragma omp parallel for collapse(2) num_threads(threadNum)
     for(int i = 0; i < height; i++) {
         for(int j = 0; j < width; j++) {
-            char val[3];
+            unsigned char val[3];
             val[0] = image_src[channels * (j + i * width) + 0];
             val[1] = image_src[channels * (j + i * width) + 1];
             val[2] = image_src[channels * (j + i * width) + 2];
