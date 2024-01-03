@@ -41,17 +41,21 @@ int read_png(const char* filename, unsigned char** image, unsigned* height,
     FILE* infile;
     infile = fopen(filename, "rb");
 
+    if (infile == NULL) {
+        perror("Error opening file");
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+    }
+
     fread(sig, 1, 8, infile);
     if (!png_check_sig(sig, 8))
         return 1;   /* bad signature */
-
+    
     png_structp png_ptr;
     png_infop info_ptr;
 
     png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
     if (!png_ptr)
         return 4;   /* out of memory */
-  
     info_ptr = png_create_info_struct(png_ptr);
     if (!info_ptr) {
         png_destroy_read_struct(&png_ptr, NULL, NULL);
@@ -62,11 +66,13 @@ int read_png(const char* filename, unsigned char** image, unsigned* height,
     png_set_sig_bytes(png_ptr, 8);
     png_read_info(png_ptr, info_ptr);
     int bit_depth, color_type;
+
     png_get_IHDR(png_ptr, info_ptr, width, height, &bit_depth, &color_type, NULL, NULL, NULL);
 
     png_uint_32  i, rowbytes;
     png_bytep  row_pointers[*height];
     png_read_update_info(png_ptr, info_ptr);
+
     rowbytes = png_get_rowbytes(png_ptr, info_ptr);
     *channels = (int) png_get_channels(png_ptr, info_ptr);
 
@@ -78,6 +84,7 @@ int read_png(const char* filename, unsigned char** image, unsigned* height,
     for (i = 0;  i < *height;  ++i)
         row_pointers[i] = *image + i * rowbytes;
     png_read_image(png_ptr, row_pointers);
+
     png_read_end(png_ptr, NULL);
     return 0;
 }
@@ -114,14 +121,18 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
     ull threadNum = CPU_COUNT(&cpuset);
 
     int *pt_cluster = (int*) malloc(height * width * sizeof(int));
-    char *centroid = (char*) malloc(channels * num_cluster * sizeof(char));
-    char *new_centroid = (char*) malloc(channels * num_cluster * sizeof(char));
-    char *tmp_centroid = (char*) malloc(channels * num_cluster * sizeof(char));
+    // char *centroid = (char*) malloc(channels * num_cluster * sizeof(char));
+    // char *new_centroid = (char*) malloc(channels * num_cluster * sizeof(char));
+
+    unsigned char *centroid = (unsigned char*) malloc(channels * num_cluster * sizeof(unsigned char));
+    unsigned char *new_centroid = (unsigned char*) malloc(channels * num_cluster * sizeof(unsigned char));
+
+    unsigned char *tmp_centroid = (unsigned char*) malloc(channels * num_cluster * sizeof(char));
     int *sum_dist = (int*) malloc(channels * num_cluster * sizeof(int));
     int *num_pt_cluster = (int*) malloc(num_cluster * sizeof(int));
     unsigned char* tmp_image_result = (unsigned char*) malloc(height * width * channels * sizeof(unsigned char));
     
-    // char val[3];
+    // unsigned char val[3];
     int dist, min_dist, idx, sum_val;
     MPI_Status status;
 
@@ -147,11 +158,10 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
     // }
     while (1)
     {
-                
         #pragma omp parallel for collapse(2) num_threads(threadNum)
         for(int i = rank; i < height; i+=size) {
             for(int j = 0; j < width; j++) {
-                char val[3];
+                unsigned char val[3];
                 val[0] = image_src[channels * (j + i * width) + 0];
                 val[1] = image_src[channels * (j + i * width) + 1];
                 val[2] = image_src[channels * (j + i * width) + 2];
@@ -270,7 +280,7 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
     #pragma omp parallel for collapse(2) num_threads(threadNum)
     for(int i = rank; i < height; i+=size) {
         for(int j = 0; j < width; j++) {
-            char val[3];
+            unsigned char val[3];
             val[0] = image_src[channels * (j + i * width) + 0];
             val[1] = image_src[channels * (j + i * width) + 1];
             val[2] = image_src[channels * (j + i * width) + 2];
@@ -325,7 +335,7 @@ int main(int argc, char** argv) {
 	timespec total_time1, total_time2;
 
     srand(time(0));
-    
+
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
@@ -334,16 +344,18 @@ int main(int argc, char** argv) {
     assert(argc == 3);
     unsigned height, width, channels;
     image_src = NULL;
+
     read_png(argv[1], &image_src, &height, &width, &channels);
+    
     image_result = (unsigned char*) malloc(height * width * channels * sizeof(unsigned char));
-   
-    //clock_gettime(CLOCK_MONOTONIC, &total_time1);
-    kmeans(image_src, image_result, height, width, channels, 1000);
-    //printf("%u, %u ", height, width);
-    //clock_gettime(CLOCK_MONOTONIC, &total_time2);
+
+    clock_gettime(CLOCK_MONOTONIC, &total_time1);
+    kmeans(image_src, image_result, height, width, channels, 10);
+
+    clock_gettime(CLOCK_MONOTONIC, &total_time2);
 	
-    //total_time = cal_time(total_time1, total_time2);
-    //printf(" total_time:  %.5f\n", total_time);
+    total_time = cal_time(total_time1, total_time2);
+    printf(" total_time:  %.5f\n", total_time);
 // todo rank ==0/
     if(rank == 0){
         write_png(argv[2], image_result, height, width, channels);
