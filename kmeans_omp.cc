@@ -263,19 +263,14 @@ int main(int argc, char** argv) {
     unsigned height, width, channels;
     image_src = NULL;
     read_png(argv[1], &image_src, &height, &width, &channels);
-    printf("read_png done\n");
-    fflush(stdout);
     image_result = (unsigned char*) malloc(height * width * channels * sizeof(unsigned char));
 
-    //clock_gettime(CLOCK_MONOTONIC, &total_time1);
+    clock_gettime(CLOCK_MONOTONIC, &total_time1);
     kmeans(image_src, image_result, height, width, channels, 100);
-    printf("kmeans done\n");
-    fflush(stdout);
-    //printf("%u, %u ", height, width);
-    //clock_gettime(CLOCK_MONOTONIC, &total_time2);
+    clock_gettime(CLOCK_MONOTONIC, &total_time2);
 	
-    //total_time = cal_time(total_time1, total_time2);
-    //printf(" total_time:  %.5f\n", total_time);
+    total_time = cal_time(total_time1, total_time2);
+    printf(" total_time:  %.5f\n", total_time);
 
     write_png(argv[2], image_result, height, width, channels);
     printf("write_png done\n");
