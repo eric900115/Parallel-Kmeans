@@ -144,8 +144,8 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
                 val[2] = image_src[channels * (j + i * width) + 2];
                 int min_dist = 1000000;
                 int dist, idx;
-                //todo
-                //#pragma omp parallel for -- data race: idx, min_dist
+                //todo 1 add #pragma omp atomic in if clause
+                //#pragma omp parallel for  //-- data race: idx, min_dist
                 for(int k = 0; k < num_cluster; k++) {
                     // calculate l2 norm
                     dist = 0;
@@ -153,10 +153,25 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
                     dist += (val[1] - centroid[channels * k + 1]) * (val[1] - centroid[channels * k + 1]);
                     dist += (val[2] - centroid[channels * k + 2]) * (val[2] - centroid[channels * k + 2]);
                     dist = sqrt(dist);
+                    // version - 1
+                    // #pragma omp critical
                     if(dist < min_dist) {
                         min_dist = dist;
                         idx = k;
                     }
+                    // version - 2
+                    // double temp_min_dist;
+                    // #pragma omp atomic read
+                    // temp_min_dist = min_dist;
+
+                    // if (dist < temp_min_dist) {
+                    //     #pragma omp atomic write
+                    //     min_dist = dist;
+
+                    //     #pragma omp atomic write
+                    //     idx = k;
+                    // }
+
                 }
                 // store which cluster the data belong to
                 pt_cluster[j + i * width] = idx;
@@ -172,11 +187,13 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
             sum_dist[2 + i * channels] = 0;
         }
 
-        // todo : data race: idx , sum_dist
-        //#pragma omp parallel for collapse(2) -- data race: idx , sum_dist
+        // todo 2: data race: idx, idx declare within the scope
+        #pragma omp parallel for collapse(2) // -- data race: idx , sum_dist
         for(int i = 0; i < height; i++) {
             for(int j = 0; j < width; j++) {
-                idx = pt_cluster[j + i * width]; // get cluster id
+                
+                int idx = pt_cluster[j + i * width];
+                
                 num_pt_cluster[idx] += 1;
                 sum_dist[idx * channels + 0] += image_src[channels * (j + i * width) + 0];
                 sum_dist[idx * channels + 1] += image_src[channels * (j + i * width) + 1];
@@ -197,8 +214,7 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
         // Also, save the centroid value
         sum_val = 0;
         // int *sum_val_arr = (int*) malloc(threadNum * sizeof(int));
-        //todo
-        // #pragma omp parallel for num_threads(threadNum)
+        
         #pragma omp parallel for num_threads(threadNum) reduction(+:sum_val)
         for(int i = 0; i < num_cluster; i++) { 
             int dist = 0;
@@ -223,7 +239,7 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
             break;
         }
     }
-    //todo dist data race
+    //todo 3: add #pragma omp atomic for if clause to avoid dist data race
     #pragma omp parallel for collapse(2) num_threads(threadNum)
     for(int i = 0; i < height; i++) {
         for(int j = 0; j < width; j++) {
@@ -233,6 +249,8 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
             val[2] = image_src[channels * (j + i * width) + 2];
             int min_dist = 1000000;
             int dist, idx;
+
+            //#pragma omp parallel for
             for(int k = 0; k < num_cluster; k++) {
                 // calculate l2 norm
                 dist = 0;
@@ -240,10 +258,24 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
                 dist += (val[1] - centroid[channels * k + 1]) * (val[1] - centroid[channels * k + 1]);
                 dist += (val[2] - centroid[channels * k + 2]) * (val[2] - centroid[channels * k + 2]);
                 dist = sqrt(dist);
+                // version - 1
+                // #pragma omp critical
                 if(dist < min_dist) {
                     min_dist = dist;
                     idx = k;
                 }
+                // version - 2
+                // double temp_min_dist;
+                // #pragma omp atomic read
+                // temp_min_dist = min_dist;
+
+                // if (dist < temp_min_dist) {
+                //     #pragma omp atomic write
+                //     min_dist = dist;
+
+                //     #pragma omp atomic write
+                //     idx = k;
+                // }
             }
 
             image_result[channels * (j + i * width) + 0] = centroid[channels * idx + 0];
@@ -266,15 +298,14 @@ int main(int argc, char** argv) {
     image_result = (unsigned char*) malloc(height * width * channels * sizeof(unsigned char));
 
     clock_gettime(CLOCK_MONOTONIC, &total_time1);
-    kmeans(image_src, image_result, height, width, channels, 100);
+    kmeans(image_src, image_result, height, width, channels, 5000);
     clock_gettime(CLOCK_MONOTONIC, &total_time2);
 	
     total_time = cal_time(total_time1, total_time2);
     printf(" total_time:  %.5f\n", total_time);
 
     write_png(argv[2], image_result, height, width, channels);
-    printf("write_png done\n");
-    fflush(stdout);
+   
 
     return 0;
 }
