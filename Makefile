@@ -29,6 +29,9 @@ kmeans: kmeans.cc
 
 kmeans_omp: kmeans_omp.cc
 	$(CXX) $(LDFLAGS) $(CXXFLAGS) -o $@ $?
+	
+kmeans_omp_SSE: kmeans_omp_SSE.cc
+	$(CXX) $(LDFLAGS) $(CXXFLAGS) -o $@ $?
 
 kmeans_hybrid: kmeans_hybrid.cc
 	$(MPICXX) $(LDFLAGS) $(CXXFLAGS) -o $@ $?
