@@ -285,17 +285,51 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
 
         sum_val = 0;
         #pragma omp parallel for num_threads(threadNum) reduction(+:sum_val)
-        for(int i = 0; i < num_cluster; i++) { 
-            int dist = 0;
-            dist += (new_centroid[channels * i + 0] - centroid[channels * i + 0]) * (new_centroid[channels * i + 0] - centroid[channels * i + 0]);
-            dist += (new_centroid[channels * i + 1] - centroid[channels * i + 1]) * (new_centroid[channels * i + 1] - centroid[channels * i + 1]);
-            dist += (new_centroid[channels * i + 2] - centroid[channels * i + 2]) * (new_centroid[channels * i + 2] - centroid[channels * i + 2]);
+        for(int k = 0; k < num_cluster; k+=4) { 
+            // int dist = 0;
+            // dist += (new_centroid[channels * i + 0] - centroid[channels * i + 0]) * (new_centroid[channels * i + 0] - centroid[channels * i + 0]);
+            // dist += (new_centroid[channels * i + 1] - centroid[channels * i + 1]) * (new_centroid[channels * i + 1] - centroid[channels * i + 1]);
+            // dist += (new_centroid[channels * i + 2] - centroid[channels * i + 2]) * (new_centroid[channels * i + 2] - centroid[channels * i + 2]);
         
-            sum_val += sqrt(dist);
-            centroid[channels * i + 0] = new_centroid[channels * i + 0];
-            centroid[channels * i + 1] = new_centroid[channels * i + 1];
-            centroid[channels * i + 2] = new_centroid[channels * i + 2];
+            // sum_val += sqrt(dist);
+            // centroid[channels * i + 0] = new_centroid[channels * i + 0];
+            // centroid[channels * i + 1] = new_centroid[channels * i + 1];
+            // centroid[channels * i + 2] = new_centroid[channels * i + 2];
+
+            __m128i centroid_r = _mm_set_epi32 ( (int)centroid[(channels * k )+9], (int)centroid[(channels * k )+6], (int)centroid[(channels * k )+3], (int)centroid[(channels * k )+0]);
+            __m128i centroid_g = _mm_set_epi32 ( (int)centroid[ (channels * k )+10], (int)centroid[ (channels * k )+7], (int)centroid[(channels * k )+4], (int)centroid[  (channels * k )+1] ) ;
+            __m128i centroid_b = _mm_set_epi32 ( (int)centroid[(channels * k )+11], (int)centroid[ (channels * k )+8], (int)centroid[(channels * k )+5], (int)centroid[ (channels * k )+2] ) ;
+
+            __m128i new_centroid_r = _mm_set_epi32 ( (int)new_centroid[(channels * k )+9], (int)new_centroid[(channels * k )+6], (int)new_centroid[(channels * k )+3], (int)new_centroid[(channels * k )+0]);
+            __m128i new_centroid_g = _mm_set_epi32 ( (int)new_centroid[ (channels * k )+10], (int)new_centroid[ (channels * k )+7], (int)new_centroid[(channels * k )+4], (int)new_centroid[  (channels * k )+1] ) ;
+            __m128i new_centroid_b = _mm_set_epi32 ( (int)new_centroid[(channels * k )+11], (int)new_centroid[ (channels * k )+8], (int)new_centroid[(channels * k )+5], (int)new_centroid[ (channels * k )+2] ) ;
+
+            __m128i result_sub_r = _mm_sub_epi32(new_centroid_r, centroid_r);
+            __m128i result_square_r = _mm_mullo_epi32(result_sub_r, result_sub_r);
+
+            __m128i result_sub_g = _mm_sub_epi32(new_centroid_g, centroid_g);
+            __m128i result_square_g = _mm_mullo_epi32(result_sub_g, result_sub_g);
+
+            __m128i result_sub_b = _mm_sub_epi32(new_centroid_b, centroid_b);
+            __m128i result_square_b = _mm_mullo_epi32(result_sub_b, result_sub_b);
             
+            __m128i dist_128 = _mm_add_epi32(result_square_r, result_square_g);
+            dist_128 = _mm_add_epi32(dist_128, result_square_b);
+            //todo : may have error !! 後面幾個 會有多的數值
+            __m128 float_dist_128 = _mm_cvtepi32_ps(dist_128);
+            __m128 sqrt_dist_128 = _mm_sqrt_ps(float_dist_128);
+            __m128i int_sqrt_result = _mm_cvtps_epi32(sqrt_dist_128);
+            int dist[4];
+            _mm_storeu_si128((__m128i*)dist, int_sqrt_result);
+            for (int ii = 0; k+ii < num_cluster && ii <4 ; ++ii) {
+                sum_val += dist[ii];
+                centroid[channels * (k+ii) + 0] = new_centroid[channels * (k+ii) + 0];
+                centroid[channels * (k+ii) + 1] = new_centroid[channels * (k+ii) + 1];
+                centroid[channels * (k+ii) + 2] = new_centroid[channels * (k+ii) + 2];
+            }
+            
+            
+             
         }
         // printf("sum_val: %d \n", sum_val);
         fflush(stdout);
@@ -371,7 +405,7 @@ int main(int argc, char** argv) {
     image_result = (unsigned char*) malloc(height * width * channels * sizeof(unsigned char));
 
     clock_gettime(CLOCK_MONOTONIC, &total_time1);
-    kmeans(image_src, image_result, height, width, channels, 10);
+    kmeans(image_src, image_result, height, width, channels, 50);
     clock_gettime(CLOCK_MONOTONIC, &total_time2);
 	
     total_time = cal_time(total_time1, total_time2);
