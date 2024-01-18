@@ -82,12 +82,13 @@ void write_png(const char* filename, png_bytep image, const unsigned height, con
 void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned height, unsigned width, unsigned channels, unsigned num_cluster) {
 
     int *pt_cluster = (int*) malloc(height * width * sizeof(int));
-    char *centroid = (char*) malloc(channels * num_cluster * sizeof(char));
-    char *new_centroid = (char*) malloc(channels * num_cluster * sizeof(char));
+    unsigned char *centroid = (unsigned char*) malloc(channels * num_cluster * sizeof(unsigned char));
+    unsigned char *new_centroid = (unsigned char*) malloc(channels * num_cluster * sizeof(unsigned char));
     int *sum_dist = (int*) malloc(channels * num_cluster * sizeof(int));
     int *num_pt_cluster = (int*) malloc(num_cluster * sizeof(int));
-    char val[3];
-    int dist, min_dist, idx, sum_val;
+    unsigned char val[3];
+    int dist, idx, sum_val;
+    unsigned long long int min_dist;
 
     // get random center
     for(int i = 0; i < num_cluster; i++) {
@@ -106,7 +107,7 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
                 val[0] = image_src[channels * (j + i * width) + 0];
                 val[1] = image_src[channels * (j + i * width) + 1];
                 val[2] = image_src[channels * (j + i * width) + 2];
-                min_dist = 1000000;
+                min_dist = 1215752192000;
                 
                 for(int k = 0; k < num_cluster; k++) {
                     // calculate l2 norm
@@ -167,7 +168,7 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
         }
 
         // if the sum < threshold, stop the iteraton
-        if(sum_val < num_cluster * 4.1) {
+        if(sum_val < num_cluster * 1) {
             break;
         }
     }
@@ -177,7 +178,7 @@ void kmeans(unsigned char* image_src, unsigned char* image_result, unsigned heig
             val[0] = image_src[channels * (j + i * width) + 0];
             val[1] = image_src[channels * (j + i * width) + 1];
             val[2] = image_src[channels * (j + i * width) + 2];
-            min_dist = 1000000;
+            min_dist = 1215752192000;
         
             for(int k = 0; k < num_cluster; k++) {
                 // calculate l2 norm
